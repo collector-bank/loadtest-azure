@@ -15,30 +15,33 @@ class Program
             return UnitTest() ? 0 : 1;
         }
 
+        var elasticSources = ExtractElasticSources(parsedArgs);
         var extraFields = ExtractExtraFields(parsedArgs);
 
-        if (parsedArgs.Count != 10)
+        if (parsedArgs.Count != 5)
         {
             Log(
-@"Usage: ArtilleryToElastic.exe [-f name value] <filename>
+@"Usage: ArtilleryToElastic.exe
+    [-e <source serverurl> <source username> <source password> <source index> <timestampfield>]
+    [-f <name> <value>]
+    <filename>
     <serverurl> <username> <password>
     <rebasetime>
-    <source serverurl> <source username> <source password> <source index>
-    <timestampfield>
+
+-e           Copy logging from other elastic cluster:
+  source serverurl:     Elasticsearch base url.
+  source username:      Elasticsearch username.
+  source password:      Elasticsearch password.
+  source/target index:  Elasticsearch index.
+  timestampfield:       Elasticsearch timestamp field.
 
 -f:          Optional extra fields that will be added to every json document.
+
 filename:    Artillery result file (json).
 serverurl:   Target elasticsearch base url.
 username:    Target elasticsearch username.
 password:    Target elasticsearch password.
-rebasetime:  Start time (HH:mm:ss) that time stamps should be rebased on.
-
-Copy logging from other elastic cluster:
-source serverurl:       Elasticsearch base url.
-source username:        Elasticsearch username.
-source password:        Elasticsearch password.
-source/target index:    Elasticsearch index.
-timestampfield:         Elasticsearch timestamp field.");
+rebasetime:  Start time (HH:mm:ss) that time stamps should be rebased on.");
 
             return 1;
         }
@@ -54,22 +57,54 @@ timestampfield:         Elasticsearch timestamp field.");
             return 1;
         }
 
-        string sourceServerurl = parsedArgs[5];
-        string sourceUsername = parsedArgs[6];
-        string sourcePassword = parsedArgs[7];
-        string elasticindex = parsedArgs[8];
-        string timestampfield = parsedArgs[9];
-
         ArtilleryResult result = ArtilleryResult.ParseFile(filename, rebasestarttime);
 
         await ArtilleryToElastic.UploadResult(result, serverurl, username, password, extraFields);
 
-        await CopyElasticLogs.CopyDocuments(sourceServerurl, sourceUsername, sourcePassword,
-            serverurl, username, password,
-            elasticindex, timestampfield, result.EarliestStartTime.AddMinutes(-5), result.LastEndTime.AddMinutes(5), result.Diff_ms,
-            extraFields);
+        foreach (var elasticSource in elasticSources)
+        {
+            await CopyElasticLogs.CopyDocuments(elasticSource,
+                serverurl, username, password, result.EarliestStartTime.AddMinutes(-5), result.LastEndTime.AddMinutes(5), result.Diff_ms,
+                extraFields);
+        }
 
         return 0;
+    }
+
+    static ElasticSource[] ExtractElasticSources(List<string> parsedArgs)
+    {
+        var sources = new List<ElasticSource>();
+
+        int index = parsedArgs.IndexOf("-e");
+        while (index >= 0 && index < parsedArgs.Count - 5)
+        {
+            string sourceServerurl = parsedArgs[index + 1];
+            string sourceUsername = parsedArgs[index + 2];
+            string sourcePassword = parsedArgs[index + 3];
+            string elasticIndex = parsedArgs[index + 4];
+            string timestampField = parsedArgs[index + 5];
+            Log($"Got elastic args: '{sourceServerurl}' '{sourceUsername}' '{sourcePassword}' '{elasticIndex}' '{timestampField}'");
+            ElasticSource source = new ElasticSource
+            {
+                SourceServerurl = sourceServerurl,
+                SourceUsername = sourceUsername,
+                SourcePassword = sourcePassword,
+                ElasticIndex = elasticIndex,
+                TimestampField = timestampField
+            };
+            sources.Add(source);
+
+            parsedArgs.RemoveAt(index);
+            parsedArgs.RemoveAt(index);
+            parsedArgs.RemoveAt(index);
+            parsedArgs.RemoveAt(index);
+            parsedArgs.RemoveAt(index);
+            parsedArgs.RemoveAt(index);
+
+            index = parsedArgs.IndexOf("-e", index);
+        }
+
+        return sources.ToArray();
     }
 
     static Dictionary<string, string> ExtractExtraFields(List<string> parsedArgs)
