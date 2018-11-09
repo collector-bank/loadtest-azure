@@ -9,12 +9,12 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 
-class ElasticSource
+class ElasticCopySource
 {
     public string SourceServerurl { get; set; }
     public string SourceUsername { get; set; }
     public string SourcePassword { get; set; }
-    public string ElasticIndex { get; set; }
+    public string Index { get; set; }
     public string TimestampField { get; set; }
 }
 
@@ -23,7 +23,7 @@ class CopyElasticLogs
     static int Resultcount { get; set; }
 
     public static async Task CopyDocuments(
-        ElasticSource source,
+        ElasticCopySource source,
         string targetServerurl, string targetUsername, string targetPassword,
         DateTime starttime, DateTime endtime, long diff_ms,
         Dictionary<string, string> extraFields)
@@ -32,7 +32,7 @@ class CopyElasticLogs
 
         string timestampfieldname = source.TimestampField;
 
-        dynamic sourceDocuments = await GetRowsAsync(source.SourceServerurl, source.SourceUsername, source.SourcePassword, source.ElasticIndex, timestampfieldname, starttime, endtime);
+        dynamic sourceDocuments = await GetRowsAsync(source.SourceServerurl, source.SourceUsername, source.SourcePassword, source.Index, timestampfieldname, starttime, endtime);
         if (sourceDocuments == null)
         {
             Log("No documents to copy.");
